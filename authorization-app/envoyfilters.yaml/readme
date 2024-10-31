@@ -1,0 +1,10 @@
+enable debug logs on the istio-proxy
+
+kubectl exec -it <pod-name> -c istio-proxy -n <namespace> -- curl -X POST "localhost:15000/logging?level=debug"
+kubectl logs <pod-name> -c istio-proxy -n <namespace>
+
+kubectl apply -f log-headers.yaml
+kubectl logs <pod-name> -c istio-proxy -n <namespace>
+
+kubectl exec -it <pod-name> -c istio-proxy -n <namespace> -- curl -X POST "localhost:15000/logging?level=info"
+kubectl delete -f log-headers.yaml

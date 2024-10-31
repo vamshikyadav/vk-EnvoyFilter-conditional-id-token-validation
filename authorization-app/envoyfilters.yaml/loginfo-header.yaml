@@ -1,0 +1,30 @@
+apiVersion: networking.istio.io/v1alpha3
+kind: EnvoyFilter
+metadata:
+  name: log-headers
+  namespace: <namespace>
+spec:
+  workloadSelector:
+    labels:
+      app: <your-target-service>
+  configPatches:
+  - applyTo: HTTP_FILTER
+    match:
+      context: SIDECAR_INBOUND
+      listener:
+        filterChain:
+          filter:
+            name: "envoy.filters.network.http_connection_manager"
+    patch:
+      operation: INSERT_BEFORE
+      value:
+        name: envoy.filters.http.lua
+        typed_config:
+          "@type": type.googleapis.com/envoy.extensions.filters.http.lua.v3.Lua
+          inlineCode: |
+            function envoy_on_request(request_handle)
+              -- Log all request headers to help identify JWT claim headers
+              for k, v in pairs(request_handle:headers()) do
+                request_handle:logInfo(string.format("Header: %s, Value: %s", k, v))
+              end
+            end

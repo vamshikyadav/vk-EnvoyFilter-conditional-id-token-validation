@@ -1,0 +1,29 @@
+apiVersion: networking.istio.io/v1alpha3
+kind: EnvoyFilter
+metadata:
+  name: custom-ext-authz-filter
+  namespace: your-namespace
+spec:
+  workloadSelector:
+    labels:
+      app: your-target-service
+  configPatches:
+  - applyTo: HTTP_FILTER
+    match:
+      context: SIDECAR_INBOUND
+      listener:
+        portNumber: 80  # Service port
+        filterChain:
+          filter:
+            name: "envoy.filters.network.http_connection_manager"
+    patch:
+      operation: INSERT_BEFORE
+      value:
+        name: envoy.filters.http.ext_authz
+        typed_config:
+          "@type": type.googleapis.com/envoy.extensions.filters.http.ext_authz.v3.ExtAuthz
+          grpc_service:
+            google_grpc:
+              target_uri: "external-auth-service.your-namespace.svc.cluster.local:8080"
+              stat_prefix: "ext_authz"
+            timeout: 1s

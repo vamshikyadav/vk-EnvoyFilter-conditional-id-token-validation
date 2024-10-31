@@ -1,0 +1,36 @@
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: external-auth-service
+  namespace: your-namespace  # Replace with your target namespace
+spec:
+  replicas: 1
+  selector:
+    matchLabels:
+      app: external-auth-service
+  template:
+    metadata:
+      labels:
+        app: external-auth-service
+    spec:
+      containers:
+      - name: external-auth-service
+        image: external-auth-service:latest  # Replace with your image registry if needed
+        ports:
+        - containerPort: 8080
+        env:
+        - name: JWT_SECRET
+          value: "your-secret-key"  # Use Kubernetes secrets for production
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: external-auth-service
+  namespace: your-namespace
+spec:
+  selector:
+    app: external-auth-service
+  ports:
+  - protocol: TCP
+    port: 8080
+    targetPort: 8080

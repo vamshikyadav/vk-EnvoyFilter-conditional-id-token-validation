@@ -1,0 +1,17 @@
+apiVersion: security.istio.io/v1beta1
+kind: AuthorizationPolicy
+metadata:
+  name: custom-auth-policy
+  namespace: your-namespace
+spec:
+  selector:
+    matchLabels:
+      app: your-target-service
+  action: CUSTOM
+  provider:
+    name: custom-ext-authz
+  rules:
+  - to:
+    - operation:
+        methods: ["GET", "POST"]  # Methods you want to protect
+        paths: ["/specific/path"]  # Paths you want to protect

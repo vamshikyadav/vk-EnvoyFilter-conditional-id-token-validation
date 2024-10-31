@@ -1,0 +1,9 @@
+docker build -t external-auth-service:latest .
+docker run -p 8080:8080 external-auth-service:latest
+curl -X POST http://localhost:8080/authorize -H "id_token: your-jwt-token"
+
+
+
+kubectl apply -f auth-service-deployment.yaml
+kubectl logs -l app=external-auth-service -n your-namespace
+

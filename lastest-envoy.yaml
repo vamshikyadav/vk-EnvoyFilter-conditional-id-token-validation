@@ -1,0 +1,69 @@
+apiVersion: networking.istio.io/v1alpha3
+kind: EnvoyFilter
+metadata:
+  name: custom-id-token-filter
+  namespace: your-namespace
+spec:
+  workloadSelector:
+    labels:
+      app: your-target-service  # Target the specific service
+  configPatches:
+  - applyTo: HTTP_FILTER
+    match:
+      context: SIDECAR_INBOUND
+      listener:
+        filterChain:
+          filter:
+            name: "envoy.filters.network.http_connection_manager"
+            subFilter:
+              name: "envoy.filters.http.router"
+    patch:
+      operation: INSERT_BEFORE
+      value:
+        name: envoy.filters.http.lua
+        typed_config:
+          "@type": type.googleapis.com/envoy.extensions.filters.http.lua.v3.Lua
+          inlineCode: |
+            function envoy_on_request(request_handle)
+              -- Extract client_id from request.auth.claims
+              local client_id = request_handle:headers():get("x-envoy-authenticated-client-id")  -- Adjust based on Istio JWT claim headers
+              if client_id ~= "xxxxx" then
+                -- Skip id_token validation if client_id does not match
+                return
+              end
+
+              -- Proceed with id_token validation
+              local id_token = request_handle:headers():get("id_token")
+              if not id_token then
+                -- Reject if id_token is missing
+                request_handle:respond({[":status"] = "403"}, "id_token missing")
+                return
+              end
+
+              -- Decode the JWT (simplified; use a library for production)
+              local jwt = require "resty.jwt"
+              local decoded_token = jwt:verify("your-public-key", id_token)  -- Replace with actual public key
+              if not decoded_token["verified"] then
+                request_handle:respond({[":status"] = "403"}, "invalid id_token")
+                return
+              end
+
+              -- Check if `groups` claim contains the required titles
+              local allowed_groups = { "title1", "title2" }
+              local groups = decoded_token["payload"]["groups"] or {}
+              local allowed = false
+
+              for _, group in ipairs(groups) do
+                for _, allowed_group in ipairs(allowed_groups) do
+                  if group == allowed_group then
+                    allowed = true
+                    break
+                  end
+                end
+                if allowed then break end
+              end
+
+              if not allowed then
+                request_handle:respond({[":status"] = "403"}, "Unauthorized group")
+              end
+            end

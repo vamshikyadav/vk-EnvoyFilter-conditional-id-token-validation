@@ -8,3 +8,8 @@ kubectl logs <pod-name> -c istio-proxy -n <namespace>
 
 kubectl exec -it <pod-name> -c istio-proxy -n <namespace> -- curl -X POST "localhost:15000/logging?level=info"
 kubectl delete -f log-headers.yaml
+
+
+
+kubectl describe requestauthentication <request-authentication-name> -n <namespace>
+kubectl describe authorizationpolicy <authorization-policy-name> -n <namespace>

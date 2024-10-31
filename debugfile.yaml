@@ -1,0 +1,93 @@
+apiVersion: networking.istio.io/v1alpha3
+kind: EnvoyFilter
+metadata:
+  name: conditional-id-token-validation
+  namespace: your-namespace
+spec:
+  workloadSelector:
+    labels:
+      app: your-app
+  configPatches:
+  - applyTo: HTTP_FILTER
+    match:
+      context: SIDECAR_INBOUND
+      listener:
+        filterChain:
+          filter:
+            name: envoy.filters.network.http_connection_manager
+    patch:
+      operation: INSERT_BEFORE
+      value:
+        name: envoy.lua
+        typed_config:
+          "@type": type.googleapis.com/envoy.extensions.filters.http.lua.v3.Lua
+          inlineCode: |
+            function envoy_on_request(request_handle)
+              -- Log headers for debugging
+              request_handle:logInfo("Checking headers...")
+              for key, value in pairs(request_handle:headers()) do
+                request_handle:logInfo("Header: " .. key .. " = " .. value)
+              end
+
+              -- Retrieve `x-istio-jwt-payload` header to check claims
+              local claims = request_handle:headers():get("x-istio-jwt-payload")
+              if claims then
+                request_handle:logInfo("x-istio-jwt-payload found")
+                local json = require("cjson")
+                local status, decoded_claims = pcall(json.decode, claims)
+
+                if status then
+                  request_handle:logInfo("Decoded claims successfully")
+                  -- Proceed only if `sub` claim equals "user1"
+                  if decoded_claims["sub"] == "user1" then
+                    request_handle:logInfo("sub is user1, proceeding with Id_token check")
+
+                    -- Extract and validate `Id_token` header
+                    local id_token = request_handle:headers():get("Id_token")
+                    if not id_token then
+                      request_handle:respond({ [":status"] = "400" }, "Missing Id_token header")
+                      return
+                    end
+
+                    -- Decode Id_token payload
+                    local function decode_base64(input)
+                      local b = 'ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789+/'
+                      input = string.gsub(input, '[^' .. b .. '=]', '')
+                      return (input:gsub('.', function(x)
+                        if (x == '=') then return '' end
+                        local r, f = '', (b:find(x) - 1)
+                        for i = 6, 1, -1 do
+                          r = r .. (f % 2 ^ i - f % 2 ^ (i - 1) > 0 and '1' or '0')
+                        end
+                        return r
+                      end):gsub('%d%d%d%d%d%d%d%d', function(x)
+                        return string.char(tonumber(x, 2))
+                      end))
+                    end
+
+                    -- Decode and validate payload in `Id_token`
+                    local payload = decode_base64(id_token:match("^.+%.(.+)%.?.*$"))
+                    local status, decoded_payload = pcall(json.decode, payload)
+
+                    if not status then
+                      request_handle:respond({ [":status"] = "400" }, "Invalid Id_token payload")
+                      return
+                    end
+
+                    -- Validate groups field
+                    if decoded_payload.groups ~= "entitlements" then
+                      request_handle:respond({ [":status"] = "403" }, "Forbidden: Invalid group")
+                      return
+                    end
+
+                    -- Allow the request to proceed if valid
+                  else
+                    request_handle:logInfo("sub is not user1, bypassing Id_token check")
+                  end
+                else
+                  request_handle:logInfo("Failed to decode claims")
+                end
+              else
+                request_handle:logInfo("x-istio-jwt-payload header not found")
+              end
+            end

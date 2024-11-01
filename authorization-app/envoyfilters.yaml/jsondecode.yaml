@@ -27,19 +27,14 @@ local function decode_base64url(input)
   return decoded
 end
 
--- Simple JSON parsing function in Lua
+-- Enhanced JSON decoding function
 local function json_decode(str)
-  local json = {}
-  str = str:gsub('"%s*:%s*"', '":')
-  str = str:gsub('%s*:%s*"', ':"')
-  str = str:gsub(',%s*}', '}'):gsub('{%s*}', '{}')
-  str = str:gsub('%s*{', '{'):gsub('{%s*', '{')
-  str = str:gsub('%s*}', '}'):gsub('}%s*', '}')
-  str = str:gsub('%s*,%s*', ',')
-  
-  local json_to_table = 'return ' .. str
-  json = assert(load(json_to_table))()
-  return json
+  local status, result = pcall(function() return assert(load("return " .. str))() end)
+  if status then
+    return result
+  else
+    return nil, "JSON parsing error"
+  end
 end
 
 function envoy_on_request(request_handle)
@@ -80,9 +75,9 @@ function envoy_on_request(request_handle)
   request_handle:logInfo("Decoded JWT Payload JSON: " .. payload_json)
 
   -- Parse JSON payload to extract client_id
-  local payload = json_decode(payload_json)
+  local payload, err = json_decode(payload_json)
   if not payload then
-    request_handle:respond({[":status"] = "403"}, "Failed to parse JWT payload as JSON")
+    request_handle:respond({[":status"] = "403"}, "Failed to parse JWT payload as JSON: " .. (err or ""))
     return
   end
 

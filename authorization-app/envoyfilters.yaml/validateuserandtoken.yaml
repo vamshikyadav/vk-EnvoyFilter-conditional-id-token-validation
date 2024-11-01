@@ -1,0 +1,72 @@
+local function decode_base64url(input)
+  input = input:gsub("-", "+"):gsub("_", "/")
+  local padding = #input % 4
+  if padding == 2 then
+    input = input .. "=="
+  elseif padding == 3 then
+    input = input .. "="
+  end
+  return (ngx.decode_base64(input))
+end
+
+function envoy_on_request(request_handle)
+  -- Extract JWT from Authorization header
+  local auth_header = request_handle:headers():get("Authorization")
+  if not auth_header or not auth_header:find("Bearer ") then
+    request_handle:respond({[":status"] = "403"}, "Missing or invalid Authorization header")
+    return
+  end
+
+  local jwt_token = auth_header:sub(8)  -- Remove "Bearer " prefix
+
+  -- Log the entire JWT token for debugging purposes
+  request_handle:logInfo("JWT Token: " .. jwt_token)
+
+  -- Split JWT into header, payload, and signature
+  local header_b64, payload_b64, signature_b64 = jwt_token:match("([^.]+)%.([^.]+)%.([^.]+)")
+  if not header_b64 or not payload_b64 then
+    request_handle:respond({[":status"] = "403"}, "Invalid JWT format")
+    return
+  end
+
+  -- Log each part to confirm the split
+  request_handle:logInfo("JWT Header (base64): " .. (header_b64 or "nil"))
+  request_handle:logInfo("JWT Payload (base64): " .. (payload_b64 or "nil"))
+  request_handle:logInfo("JWT Signature (base64): " .. (signature_b64 or "nil"))
+
+  -- Decode the payload
+  local payload_json = decode_base64url(payload_b64)
+  if not payload_json then
+    request_handle:respond({[":status"] = "403"}, "Failed to decode JWT payload")
+    return
+  end
+
+  -- Log the decoded payload JSON
+  request_handle:logInfo("Decoded JWT Payload JSON: " .. payload_json)
+
+  -- Parse JSON payload to extract client_id
+  local payload = request_handle:json_decode(payload_json)
+  if not payload then
+    request_handle:respond({[":status"] = "403"}, "Failed to parse JWT payload as JSON")
+    return
+  end
+
+  local client_id = payload["client_id"]
+  
+  -- Log the client_id to verify decoding
+  request_handle:logInfo("Decoded client_id: " .. (client_id or "nil"))
+
+  if client_id ~= "xxxxx" then
+    -- Skip id_token validation if client_id does not match
+    return
+  end
+
+  -- Proceed with id_token validation if client_id matches
+  local id_token = request_handle:headers():get("id_token")
+  if not id_token then
+    request_handle:respond({[":status"] = "403"}, "id_token missing")
+    return
+  end
+
+  -- Continue with further validation for id_token...
+end

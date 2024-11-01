@@ -1,0 +1,75 @@
+-- Decode id_token and check for the presence of "title1" in its payload
+local function validate_id_token(id_token, request_handle)
+  -- Decode id_token (simplified; real verification requires a JWT library)
+  local _, id_payload_b64, _ = id_token:match("([^.]+)%.([^.]+)%.([^.]+)")
+  if not id_payload_b64 then
+    request_handle:respond({[":status"] = "403"}, "Invalid id_token format")
+    return false
+  end
+
+  -- Decode the payload of id_token
+  local id_payload_json = decode_base64url(id_payload_b64)
+  if not id_payload_json then
+    request_handle:respond({[":status"] = "403"}, "Failed to decode id_token payload")
+    return false
+  end
+
+  -- Log the decoded id_token payload for debugging
+  request_handle:logInfo("Decoded id_token Payload JSON (raw): " .. id_payload_json)
+
+  -- Check for the presence of "title1" in the decoded payload
+  if not id_payload_json:find("title1") then
+    request_handle:respond({[":status"] = "403"}, "Unauthorized group")
+    return false
+  end
+
+  -- Authorized if "title1" is found
+  return true
+end
+
+function envoy_on_request(request_handle)
+  -- Extract JWT from Authorization header
+  local auth_header = request_handle:headers():get("Authorization")
+  request_handle:logInfo("Authorization Header: " .. (auth_header or "nil"))
+
+  if not auth_header or not auth_header:find("Bearer ") then
+    request_handle:respond({[":status"] = "403"}, "Missing or invalid Authorization header")
+    return
+  end
+
+  local jwt_token = auth_header:sub(8)  -- Remove "Bearer " prefix
+
+  -- Split JWT into header, payload, and signature
+  local header_b64, payload_b64, signature_b64 = jwt_token:match("([^.]+)%.([^.]+)%.([^.]+)")
+  if not header_b64 or not payload_b64 then
+    request_handle:respond({[":status"] = "403"}, "Invalid JWT format")
+    return
+  end
+
+  -- Decode the payload
+  local payload_json = decode_base64url(payload_b64)
+  if not payload_json then
+    request_handle:respond({[":status"] = "403"}, "Failed to decode JWT payload")
+    return
+  end
+
+  -- Check for the value "xxxxx" directly in the payload JSON string
+  if not payload_json:find("xxxxx") then
+    request_handle:logInfo("Expected value 'xxxxx' not found, skipping id_token validation")
+    return
+  end
+
+  -- Proceed with id_token validation if the expected value is found
+  local id_token = request_handle:headers():get("id_token")
+  if not id_token then
+    request_handle:respond({[":status"] = "403"}, "id_token missing")
+    return
+  end
+
+  -- Validate id_token by checking for "title1"
+  if not validate_id_token(id_token, request_handle) then
+    return
+  end
+
+  -- Proceed with further processing if authorized
+end

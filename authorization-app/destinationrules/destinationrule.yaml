@@ -1,0 +1,26 @@
+apiVersion: networking.istio.io/v1alpha3
+kind: DestinationRule
+metadata:
+  name: global-destination-rule
+  namespace: default  
+spec:
+  host: "*.default.svc.cluster.local"  
+  trafficPolicy:
+    loadBalancer:
+      simple: ROUND_ROBIN
+    connectionPool:
+      http:
+        http1MaxPendingRequests: 1000
+        http2MaxRequests: 2000
+        maxRequestsPerConnection: 100
+        maxRetries: 3
+      tcp:
+        maxConnections: 2000
+        connectTimeout: 2s
+    outlierDetection:
+      consecutiveErrors: 5
+      interval: 5s
+      baseEjectionTime: 15s
+      maxEjectionPercent: 50
+    tls:
+      mode: DISABLE  # Change to ISTIO_MUTUAL if mTLS is needed
